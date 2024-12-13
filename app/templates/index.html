@@ -25,8 +25,24 @@
                 </div>
                 
                 <div id="result" class="hidden">
-                    <h2>Transcription:</h2>
-                    <div id="transcription-text"></div>
+                    <div class="d-flex justify-content-between align-items-center">
+                        <h2>Transcription:</h2>
+                        <div class="btn-group">
+                            <button id="process-button" class="btn btn-outline-primary btn-sm">
+                                <i class="fas fa-magic"></i> Post-process
+                            </button>
+                            <button id="translate-button" class="btn btn-outline-primary btn-sm">
+                                <i class="fas fa-language"></i> Translate to Chinese
+                            </button>
+                            <button id="toggle-language" class="btn btn-outline-secondary btn-sm" style="display: none;">
+                                <i class="fas fa-exchange-alt"></i> Toggle Language
+                            </button>
+                            <button id="copy-button" class="btn btn-outline-primary btn-sm">
+                                <i class="fas fa-copy"></i> Copy Text
+                            </button>
+                        </div>
+                    </div>
+                    <div id="transcription-text" class="markdown-body"></div>
                     <div id="file-info" class="mt-3">
                         <p>Saved as: <span id="saved-file"></span></p>
                     </div>
@@ -48,6 +64,19 @@
 
 <script>
 const MAX_FILE_SIZE = 500 * 1024 * 1024; // 500MB
+
+marked.setOptions({
+    gfm: true,  // GitHub Flavored Markdown
+    breaks: true,  // Add line breaks
+    headerIds: true,
+    mangle: false,
+    highlight: function (code, lang) {
+        if (Prism.languages[lang]) {
+            return Prism.highlight(code, Prism.languages[lang], lang);
+        }
+        return code;
+    }
+});
 
 // Load transcript history
 async function loadTranscriptHistory() {
@@ -81,25 +110,92 @@ async function loadTranscriptHistory() {
     }
 }
 
-// Load specific transcript
+// Update the transcription display function
+function displayTranscription(text, element) {
+    // Parse markdown and set innerHTML
+    element.innerHTML = marked.parse(text);
+    
+    // Apply syntax highlighting to code blocks
+    element.querySelectorAll('pre code').forEach((block) => {
+        Prism.highlightElement(block);
+    });
+}
+
+// Update the loadTranscript function
 async function loadTranscript(filename) {
     try {
         const response = await fetch(`/transcripts/${filename}`);
         const data = await response.json();
         
-        if (response.ok) {
-            const result = document.getElementById('result');
-            const transcriptionText = document.getElementById('transcription-text');
-            const savedFile = document.getElementById('saved-file');
-            
-            transcriptionText.innerHTML = marked.parse(data.content); // Using marked.js for markdown rendering
-            savedFile.textContent = filename;
-            result.classList.remove('hidden');
-        } else {
-            alert(data.error || 'Error loading transcript');
+        if (!response.ok) {
+            throw new Error(data.error || 'Error loading transcript');
         }
+        
+        if (!data.content) {
+            throw new Error('No content in transcript');
+        }
+
+        const result = document.getElementById('result');
+        const transcriptionText = document.getElementById('transcription-text');
+        const savedFile = document.getElementById('saved-file');
+        const toggleButton = document.getElementById('toggle-language');
+        
+        // Check if content has both English and Chinese versions
+        const sections = data.content.split('## Chinese Content');
+        if (sections.length > 1) {
+            // Extract English content - look for content after the header
+            let englishContent = '';
+            const englishSection = sections[0].split('## English Content');
+            if (englishSection.length > 1) {
+                englishContent = englishSection[1].trim();
+            } else {
+                // If no English Content header, take everything before Chinese Content
+                englishContent = sections[0].split('# Transcript:')[1].trim();
+            }
+            
+            // Extract Chinese content
+            const chineseContent = sections[1].split('/')[1].trim(); // Split on '/' to remove the header
+            
+            // Store both versions
+            transcriptionText.dataset.english = marked.parse(englishContent);
+            transcriptionText.dataset.chinese = marked.parse(chineseContent);
+            
+            // Show toggle button
+            toggleButton.style.display = 'inline-block';
+            
+            // Display Chinese content by default if we're coming from translation
+            const displayChinese = transcriptionText.innerHTML === transcriptionText.dataset.chinese;
+            transcriptionText.innerHTML = displayChinese ? 
+                transcriptionText.dataset.chinese : 
+                transcriptionText.dataset.english;
+        } else {
+            // Only English content
+            let content = data.content;
+            if (content.includes('## English Content')) {
+                content = content.split('## English Content')[1].trim();
+            } else if (content.includes('# Transcript:')) {
+                content = content.split('# Transcript:')[1].trim();
+            }
+            
+            transcriptionText.dataset.english = marked.parse(content);
+            transcriptionText.innerHTML = transcriptionText.dataset.english;
+            toggleButton.style.display = 'none';
+        }
+        
+        savedFile.textContent = filename;
+        result.classList.remove('hidden');
+        
+        // Log for debugging
+        console.log('Loaded transcript successfully');
+        console.log('English content:', transcriptionText.dataset.english);
+        console.log('Chinese content:', transcriptionText.dataset.chinese);
+        
     } catch (error) {
-        alert('Error loading transcript');
+        console.error('Error loading transcript:', error);
+        console.error('Error details:', {
+            message: error.message,
+            stack: error.stack
+        });
     }
 }
 
@@ -217,5 +313,226 @@ document.getElementById('upload-form').addEventListener('submit', async (e) => {
 
 // Load history when page loads
 document.addEventListener('DOMContentLoaded', loadTranscriptHistory);
+
+// Add this function after your existing functions
+async function copyTranscription() {
+    const transcriptionText = document.getElementById('transcription-text');
+    const copyButton = document.getElementById('copy-button');
+    
+    try {
+        // Get the text content without HTML formatting
+        const textToCopy = transcriptionText.innerText;
+        await navigator.clipboard.writeText(textToCopy);
+        
+        // Show feedback
+        const originalText = copyButton.innerHTML;
+        copyButton.innerHTML = '<i class="fas fa-check"></i> Copied!';
+        copyButton.classList.add('btn-success');
+        copyButton.classList.remove('btn-outline-primary');
+        
+        // Reset button after 2 seconds
+        setTimeout(() => {
+            copyButton.innerHTML = '<i class="fas fa-copy"></i> Copy Text';
+            copyButton.classList.remove('btn-success');
+            copyButton.classList.add('btn-outline-primary');
+        }, 2000);
+    } catch (err) {
+        console.error('Failed to copy text:', err);
+        copyButton.innerHTML = '<i class="fas fa-times"></i> Failed to copy';
+        copyButton.classList.add('btn-danger');
+        copyButton.classList.remove('btn-outline-primary');
+        
+        setTimeout(() => {
+            copyButton.innerHTML = '<i class="fas fa-copy"></i> Copy Text';
+            copyButton.classList.remove('btn-danger');
+            copyButton.classList.add('btn-outline-primary');
+        }, 2000);
+    }
+}
+
+// Add this to your DOMContentLoaded event listener
+document.addEventListener('DOMContentLoaded', () => {
+    // Existing code...
+    loadTranscriptHistory();
+    
+    // Add copy button event listener
+    const copyButton = document.getElementById('copy-button');
+    copyButton.addEventListener('click', copyTranscription);
+});
+
+// Add these functions to your existing JavaScript
+async function translateTranscription() {
+    const translateButton = document.getElementById('translate-button');
+    const toggleButton = document.getElementById('toggle-language');
+    const transcriptionText = document.getElementById('transcription-text');
+    const savedFile = document.getElementById('saved-file');
+    const originalText = transcriptionText.innerHTML;
+    
+    try {
+        translateButton.disabled = true;
+        translateButton.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Translating...';
+        
+        const response = await fetch('/translate', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+                text: transcriptionText.innerText,
+                filename: savedFile.textContent
+            })
+        });
+        
+        const data = await response.json();
+        
+        if (response.ok && data.task_id) {
+            // Poll for translation status
+            while (true) {
+                const statusResponse = await fetch(`/translate/status/${data.task_id}`);
+                const statusData = await statusResponse.json();
+                
+                if (statusData.status === 'completed' && statusData.translation) {
+                    // Store both versions
+                    transcriptionText.dataset.english = originalText;
+                    transcriptionText.dataset.chinese = marked.parse(statusData.translation);
+                    
+                    // Show translated version
+                    transcriptionText.innerHTML = transcriptionText.dataset.chinese;
+                    
+                    // Show toggle button
+                    toggleButton.style.display = 'inline-block';
+                    
+                    // Update button state
+                    translateButton.innerHTML = '<i class="fas fa-check"></i> Translated';
+                    translateButton.classList.remove('btn-danger');
+                    translateButton.classList.add('btn-success');
+
+                    // Add a small delay before reloading
+                    await new Promise(resolve => setTimeout(resolve, 500));
+                    
+                    try {
+                        // Reload the transcript to ensure we have the latest version
+                        await loadTranscript(savedFile.textContent);
+                    } catch (loadError) {
+                        console.error('Error reloading transcript:', loadError);
+                        // Don't throw error here as translation was successful
+                    }
+                    break;
+                } else if (statusData.status === 'error') {
+                    throw new Error('Translation failed');
+                }
+                
+                await new Promise(resolve => setTimeout(resolve, 1000));
+            }
+        } else {
+            throw new Error(data.error || 'Translation failed');
+        }
+    } catch (error) {
+        console.error('Translation error:', error);
+        translateButton.innerHTML = '<i class="fas fa-times"></i> Translation Failed';
+        translateButton.classList.remove('btn-success');
+        translateButton.classList.add('btn-danger');
+    } finally {
+        translateButton.disabled = false;
+    }
+}
+
+function toggleLanguage() {
+    const transcriptionText = document.getElementById('transcription-text');
+    const currentContent = transcriptionText.innerHTML;
+    
+    if (currentContent === transcriptionText.dataset.chinese) {
+        transcriptionText.innerHTML = transcriptionText.dataset.english;
+    } else {
+        transcriptionText.innerHTML = transcriptionText.dataset.chinese;
+    }
+}
+
+// Add event listeners
+document.addEventListener('DOMContentLoaded', () => {
+    // Existing listeners...
+    
+    const translateButton = document.getElementById('translate-button');
+    const toggleButton = document.getElementById('toggle-language');
+    
+    translateButton.addEventListener('click', translateTranscription);
+    toggleButton.addEventListener('click', toggleLanguage);
+});
+
+async function postProcessTranscription() {
+    const processButton = document.getElementById('process-button');
+    const transcriptionText = document.getElementById('transcription-text');
+    const savedFile = document.getElementById('saved-file');
+    const originalText = transcriptionText.innerHTML;
+    
+    try {
+        processButton.disabled = true;
+        processButton.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Processing...';
+        
+        const response = await fetch('/process', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+                text: transcriptionText.innerText,
+                filename: savedFile.textContent
+            })
+        });
+        
+        const data = await response.json();
+        
+        if (response.ok && data.task_id) {
+            // Poll for processing status
+            while (true) {
+                const statusResponse = await fetch(`/process/status/${data.task_id}`);
+                const statusData = await statusResponse.json();
+                
+                if (statusData.status === 'completed' && statusData.processed_text) {
+                    // Update with processed text
+                    transcriptionText.dataset.english = marked.parse(statusData.processed_text);
+                    transcriptionText.innerHTML = transcriptionText.dataset.english;
+                    
+                    // Update button state
+                    processButton.innerHTML = '<i class="fas fa-check"></i> Processed';
+                    processButton.classList.remove('btn-danger');
+                    processButton.classList.add('btn-success');
+
+                    // Add a small delay before reloading
+                    await new Promise(resolve => setTimeout(resolve, 500));
+                    
+                    try {
+                        // Reload the transcript to ensure we have the latest version
+                        await loadTranscript(savedFile.textContent);
+                    } catch (loadError) {
+                        console.error('Error reloading transcript:', loadError);
+                    }
+                    break;
+                } else if (statusData.status === 'error') {
+                    throw new Error('Processing failed');
+                }
+                
+                await new Promise(resolve => setTimeout(resolve, 1000));
+            }
+        } else {
+            throw new Error(data.error || 'Processing failed');
+        }
+    } catch (error) {
+        console.error('Processing error:', error);
+        processButton.innerHTML = '<i class="fas fa-times"></i> Processing Failed';
+        processButton.classList.remove('btn-success');
+        processButton.classList.add('btn-danger');
+    } finally {
+        processButton.disabled = false;
+    }
+}
+
+// Add to your DOMContentLoaded event listeners
+document.addEventListener('DOMContentLoaded', () => {
+    // Existing listeners...
+    
+    const processButton = document.getElementById('process-button');
+    processButton.addEventListener('click', postProcessTranscription);
+});
 </script>
 {% endblock %} 

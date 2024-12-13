@@ -9,3 +9,6 @@ pydub==0.25.1
 celery==5.3.6
 redis==5.0.1
 flask-session==0.5.0
+aiohttp
++asgiref==3.7.2
++hypercorn==0.15.0

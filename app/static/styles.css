@@ -15,11 +15,53 @@
 
 #transcription-text {
     margin-top: 20px;
-    padding: 15px;
+    padding: 20px;
     border: 1px solid #ddd;
     border-radius: 4px;
-    white-space: pre-wrap;
     background-color: #f8f9fa;
+    line-height: 1.6;
+}
+
+#transcription-text h1,
+#transcription-text h2,
+#transcription-text h3 {
+    margin-top: 1.5em;
+    margin-bottom: 0.5em;
+    color: #2c3e50;
+}
+
+#transcription-text h1 {
+    border-bottom: 2px solid #eaecef;
+    padding-bottom: 0.3em;
+}
+
+#transcription-text h2 {
+    border-bottom: 1px solid #eaecef;
+    padding-bottom: 0.3em;
+}
+
+#transcription-text p {
+    margin: 1em 0;
+}
+
+#transcription-text ul,
+#transcription-text ol {
+    padding-left: 2em;
+    margin: 1em 0;
+}
+
+#transcription-text hr {
+    height: 2px;
+    background-color: #eaecef;
+    border: none;
+    margin: 2em 0;
+}
+
+#transcription-text blockquote {
+    border-left: 4px solid #dfe2e5;
+    color: #6a737d;
+    margin: 1em 0;
+    padding: 0 1em;
 }
 
 form {
@@ -94,4 +136,131 @@ button:hover {
 #status p {
     color: #666;
     font-size: 1.1em;
+}
+
+/* Markdown container styling */
+.markdown-body {
+    margin-top: 20px;
+    padding: 20px;
+    border: 1px solid #ddd;
+    border-radius: 4px;
+    background-color: #ffffff;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+}
+
+/* Override some GitHub markdown CSS for better appearance */
+.markdown-body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif;
+    font-size: 16px;
+    line-height: 1.6;
+    word-wrap: break-word;
+}
+
+.markdown-body h1 {
+    padding-bottom: 0.3em;
+    font-size: 2em;
+    border-bottom: 1px solid #eaecef;
+}
+
+.markdown-body h2 {
+    padding-bottom: 0.3em;
+    font-size: 1.5em;
+    border-bottom: 1px solid #eaecef;
+}
+
+.markdown-body h3 {
+    font-size: 1.25em;
+}
+
+.markdown-body hr {
+    height: 2px;
+    background-color: #e1e4e8;
+    border: 0;
+}
+
+.markdown-body blockquote {
+    padding: 0 1em;
+    color: #6a737d;
+    border-left: 0.25em solid #dfe2e5;
+}
+
+.markdown-body code {
+    padding: 0.2em 0.4em;
+    margin: 0;
+    font-size: 85%;
+    background-color: rgba(27,31,35,0.05);
+    border-radius: 3px;
+}
+
+.markdown-body pre {
+    padding: 16px;
+    overflow: auto;
+    font-size: 85%;
+    line-height: 1.45;
+    background-color: #f6f8fa;
+    border-radius: 3px;
+}
+
+.markdown-body table {
+    display: block;
+    width: 100%;
+    overflow: auto;
+    border-spacing: 0;
+    border-collapse: collapse;
+}
+
+.markdown-body table th,
+.markdown-body table td {
+    padding: 6px 13px;
+    border: 1px solid #dfe2e5;
+}
+
+.markdown-body table tr:nth-child(2n) {
+    background-color: #f6f8fa;
+}
+
+/* Dark mode support */
+@media (prefers-color-scheme: dark) {
+    .markdown-body {
+        color: #c9d1d9;
+        background-color: #0d1117;
+        border-color: #30363d;
+    }
+
+    .markdown-body blockquote {
+        color: #8b949e;
+        border-left-color: #3b434b;
+    }
+
+    .markdown-body code {
+        background-color: rgba(240,246,252,0.15);
+    }
+
+    .markdown-body pre {
+        background-color: #161b22;
+    }
+
+    .markdown-body table th,
+    .markdown-body table td {
+        border-color: #30363d;
+    }
+
+    .markdown-body table tr:nth-child(2n) {
+        background-color: #161b22;
+    }
+} 
+
+/* Copy button styling */
+#copy-button {
+    transition: all 0.3s ease;
+    min-width: 100px;
+}
+
+#copy-button i {
+    margin-right: 5px;
+}
+
+#copy-button.btn-success,
+#copy-button.btn-danger {
+    color: white;
 } 

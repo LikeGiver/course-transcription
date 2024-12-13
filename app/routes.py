@@ -9,8 +9,19 @@ from pydub import AudioSegment
 import math
 from werkzeug.exceptions import RequestEntityTooLarge
 import uuid
-from app.tasks import process_transcription
-from app.utils import process_large_audio, transcribe_audio_file, save_transcript, cleanup_user_files
+from app.tasks import (
+    process_transcription, 
+    translate_chunk_task, 
+    combine_translations, 
+    process_chunk_task, 
+    combine_processed_chunks, 
+    save_processed_text,
+    save_translation_task
+)
+from app.utils import process_large_audio, transcribe_audio_file, save_transcript, cleanup_user_files, process_text_with_gpt4, translate_text_concurrently, split_into_sentence_chunks
+import asyncio
+from celery import group
+from app.celery_app import celery
 
 main = Blueprint('main', __name__)
 
@@ -140,7 +151,7 @@ def process_large_audio(audio_path, user_session):
         raise Exception(f"Error processing large audio file: {str(e)}")
 
 def transcribe_audio_file(client, audio_path):
-    """Transcribe a single audio file"""
+    """Transcribe a single audio file and post-process with GPT-4"""
     try:
         print(f"Starting transcription of: {audio_path}")
         file_size = os.path.getsize(audio_path)
@@ -152,8 +163,12 @@ def transcribe_audio_file(client, audio_path):
                 file=audio_file,
                 response_format="text"
             )
-        print(f"Successfully transcribed file: {audio_path}")
-        return transcription
+        
+        print("Raw transcription complete, starting post-processing")
+        processed_text = process_text_with_gpt4(client, transcription)
+        print("Post-processing complete")
+        
+        return processed_text
     except Exception as e:
         print(f"Error in transcribe_audio_file: {str(e)}")
         raise
@@ -293,4 +308,132 @@ def get_task_status(task_id):
         return jsonify({'status': 'processing'})
     except Exception as e:
         print(f"Error checking task status: {str(e)}")
+        return jsonify({'error': str(e)}), 500
+
+@celery.task
+def save_translation_task(translation: str, filename: str):
+    """Save translation and return the translated text"""
+    try:
+        # Read existing file
+        file_path = os.path.join(current_app.config['TRANSCRIPTS_DIR'], filename)
+        with open(file_path, 'r', encoding='utf-8') as f:
+            content = f.read()
+        
+        # Get English content
+        english_content = content.split('## Chinese Content')[0].strip()
+        
+        # Create new content with both versions
+        new_content = f"{english_content}\n\n## Chinese Content / 中文内容\n\n{translation}"
+        
+        # Save updated content
+        with open(file_path, 'w', encoding='utf-8') as f:
+            f.write(new_content)
+            
+        # Return the translation for the frontend
+        return translation
+    except Exception as e:
+        print(f"Error saving translation: {e}")
+        return translation  # Still return translation even if save fails
+
+@main.route('/translate', methods=['POST'])
+def translate():
+    try:
+        text = request.json.get('text')
+        filename = request.json.get('filename')
+        if not text or not filename:
+            return jsonify({'error': 'Missing text or filename'}), 400
+        
+        # Split text into chunks
+        chunks = split_into_sentence_chunks(text)
+        print(f"Split text into {len(chunks)} chunks for translation")
+        
+        # Create a group of tasks for parallel processing
+        translation_tasks = group(
+            translate_chunk_task.s(chunk, i)
+            for i, chunk in enumerate(chunks)
+        )
+        
+        # Execute tasks, combine results, and save
+        result = (translation_tasks | combine_translations.s() | save_translation_task.s(filename))()
+        
+        return jsonify({
+            'task_id': result.id,
+            'status': 'processing'
+        })
+        
+    except Exception as e:
+        print(f"Translation error: {e}")
+        return jsonify({'error': str(e)}), 500
+
+@main.route('/translate/status/<task_id>', methods=['GET'])
+def get_translation_status(task_id):
+    try:
+        result = celery.AsyncResult(task_id)
+        
+        if result.ready():
+            result_data = result.get()
+            if isinstance(result_data, dict):
+                return jsonify(result_data)
+            else:
+                # Handle legacy format or direct translation text
+                return jsonify({
+                    'status': 'completed',
+                    'translation': result_data
+                })
+        
+        return jsonify({'status': 'processing'})
+        
+    except Exception as e:
+        print(f"Error checking translation status: {e}")
+        return jsonify({'error': str(e)}), 500
+
+@main.route('/process', methods=['POST'])
+def process_text():
+    try:
+        text = request.json.get('text')
+        filename = request.json.get('filename')
+        if not text or not filename:
+            return jsonify({'error': 'Missing text or filename'}), 400
+        
+        # Split text into chunks
+        chunks = split_into_sentence_chunks(text, max_chunk_size=500)  # Smaller chunks for better processing
+        print(f"Split text into {len(chunks)} chunks for processing")
+        
+        # Create a group of tasks for parallel processing
+        processing_tasks = group(
+            process_chunk_task.s(chunk, i)
+            for i, chunk in enumerate(chunks)
+        )
+        
+        # Execute tasks, combine results, and save
+        result = (processing_tasks | combine_processed_chunks.s() | save_processed_text.s(filename))()
+        
+        return jsonify({
+            'task_id': result.id,
+            'status': 'processing'
+        })
+        
+    except Exception as e:
+        print(f"Processing error: {e}")
+        return jsonify({'error': str(e)}), 500
+
+@main.route('/process/status/<task_id>', methods=['GET'])
+def get_process_status(task_id):
+    try:
+        result = celery.AsyncResult(task_id)
+        
+        if result.ready():
+            result_data = result.get()
+            if isinstance(result_data, dict):
+                return jsonify(result_data)
+            else:
+                return jsonify({
+                    'status': 'completed',
+                    'processed_text': result_data
+                })
+        
+        return jsonify({'status': 'processing'})
+        
+    except Exception as e:
+        print(f"Error checking process status: {e}")
         return jsonify({'error': str(e)}), 500
