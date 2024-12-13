@@ -4,7 +4,7 @@ A web application that transcribes audio and video files using OpenAI's Whisper 
 
 ## Preview
 Combined with chinese translation chrome extension:
-![Preview](./preview.png)
+![Preview](./images/preview.png)
 
 ## Features
 
